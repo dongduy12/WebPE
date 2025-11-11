@@ -1,0 +1,494 @@
+﻿@{
+    ViewData["Title"] = "SmartFA Area";
+}
+@{
+    Layout = "~/Areas/SmartFA/Views/Shared/_Layout_SmartFA.cshtml";
+}
+
+
+<div class="dashboard-stage">
+    <div class="dashboard-wrapper">
+        <div class="date-time-range text-muted">
+            <label for="startDate">Bắt đầu:</label>
+            <input type="datetime-local" id="startDate" />
+            <label for="endDate">Kết thúc:</label>
+            <input type="datetime-local" id="endDate" />
+            <button id="searchBtn" class="btn btn-ne">Tìm kiếm</button>
+            <img id="PdStock-ExportExcel-btn" src="~/assets/img/excel.png" alt="Excel Icon" style="width: 48px; height: 48px;">
+        </div>
+        <!-- === MAIN GRID === -->
+        <div class="dashboard-grid">
+            <div class="data-card">
+                <div class="panel-title">Sản lượng theo Owner</div>
+                <div class="chart-container-lg">
+                    <div id="repairChart" class="echart"></div>
+                </div>
+            </div>
+
+            <div class="data-card confirm-card" id="viReConfirmCard">
+                <div class="panel-title">Sản lượng VI-RE</div>
+                <div class="text-muted">Đang tải dữ liệu...</div>
+            </div>
+
+
+            <div class="data-card">
+                <div class="panel-title">Sản lượng theo giờ</div>
+                <div class="chart-container-lg">
+                    <div id="repairHourlyChart" class="echart"></div>
+                </div>
+            </div>
+
+            <div class="data-card confirm-card" id="checkListConfirmCard">
+                <div class="panel-title">Sản lượng CHECK_LIST</div>
+                <div class="text-muted">Đang tải dữ liệu...</div>
+            </div>
+        </div>
+
+        <!-- === AGING ROW 1 === -->
+        @*        <div class="aging-split">
+        <div class="mini-chart-box">
+        <div class="mini-chart-title">Sản lượng theo giờ</div>
+        <div id="repairHourlyChart" class="echart" style="height:280px;"></div>
+        </div>
+        <div class="mini-chart-box">
+        <div class="mini-chart-title">Xác nhận bản lỗi theo Owner</div>
+        <div id="confirmChart" class="echart" style="height:280px;"></div>
+        </div>
+        </div>*@
+
+        <div class="data-card chart-container-lg">
+            <div class="chart-title">Xác nhận bản lỗi theo Owner</div>
+            <div id="confirmChart" class="echart" style="height:350px;"></div>
+        </div>
+        <!--hiển thị chi tiết bảng xóa R-->
+        <h6 class="section-title">Chi tiết xóa R</h6>
+        <div id="xoaR" style="overflow: auto; max-height: 500px;"></div>
+        <!--hiển thị chi tiết xác nhận và phân tích-->
+        <h6 class="section-title">Chi tiết confirm và phân tích</h6>
+        <div id="XacNhanPhanTich" style="overflow: auto; max-height: 500px;"></div>
+    </div>
+</div>
+
+<!-- Modal hiển thị serial number theo giờ -->
+<div class="modal fade" id="serialNumberModal" tabindex="-1" aria-labelledby="serialNumberModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-lg-custom">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="serialNumberModalLabel">Serial Number Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body table-responsive">
+                <table id="serialNumberTable" class="table table-bordered datatable-table table-striped">
+                    <thead>
+                        <tr>
+                            <th>SERIAL_NUMBER</th>
+                            <th>MODEL_NAME</th>
+                            <th>WIP_GROUP</th>
+                            <th>ERROR_FLAG</th>
+                            <th>MO_NUMBER</th>
+                            <th>TEST_GROUP</th>
+                            <th>ERROR_CODE</th>
+                            <th>ERROR_DESC</th>
+                            <th>ERROR_CODE_ITEM</th>
+                            <th>REPAIRER</th>
+                            <th>REPAIR_TIME</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+@section Scripts {
+    <script src="~/assets/areas/smartfa/js/report.js?v=@DateTime.Now.Ticks"></script>
+    <style>
+        .modal-lg-custom {
+            max-width: 90% !important;
+        }
+
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 10px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+
+        .date-time-range {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+            .date-time-range label {
+                font-weight: 600;
+                color: #333;
+            }
+
+            .date-time-range input[type="datetime-local"] {
+                padding: 8px;
+                border: 1px solid #ccc;
+                border-radius: 5px;
+                font-size: 14px;
+            }
+
+        .btn-ne {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+            .btn-ne:hover {
+                background-color: #0056b3;
+            }
+
+        #PdStock-ExportExcel-btn {
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+            #PdStock-ExportExcel-btn:hover {
+                transform: scale(1.1);
+            }
+
+        .section-title {
+            margin: 20px 0 10px;
+            color: #2c3e50;
+            font-size: 18px;
+            font-weight: 600;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 8px;
+            text-transform: uppercase;
+        }
+
+        /* === TABLE === */
+        .table-card .panel-title {
+            margin-bottom: 0.75rem;
+        }
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #fff;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            border: 1px solid #eee;
+            text-align: left;
+            font-size: 13px;
+        }
+
+        th {
+            background-color: #3498db;
+            color: white;
+            font-weight: 600;
+        }
+
+        td {
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        tr:hover {
+            background-color: #f1f1f1;
+            transition: background-color 0.2s;
+        }
+
+        #serialNumberModal .modal-body {
+            overflow-x: auto;
+        }
+
+        #serialNumberTable {
+            width: 100% !important;
+        }
+
+        .confirm-card .panel-title {
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .vi-re-summary {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .vi-re-total {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .vi-re-total-split {
+            margin-left: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+            .vi-re-total-split .ok {
+                color: #2e7d32;
+            }
+
+            .vi-re-total-split .ng {
+                color: #c62828;
+            }
+
+        .vi-re-chart {
+            height: 320px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 8px;
+            background: #fff;
+        }
+
+            .vi-re-chart .vi-re-no-data {
+                height: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+        .vi-re-owner {
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 10px 12px;
+            background: #fff;
+        }
+
+            .vi-re-owner + .vi-re-owner {
+                margin-top: 10px;
+            }
+
+            .vi-re-owner summary {
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                font-weight: 600;
+                color: #2c3e50;
+            }
+
+                .vi-re-owner summary::-webkit-details-marker {
+                    display: none;
+                }
+
+                .vi-re-owner summary::after {
+                    content: '\25BC';
+                    font-size: 12px;
+                    margin-left: 8px;
+                    transition: transform 0.2s ease;
+                    color: #7f8c8d;
+                }
+
+            .vi-re-owner[open] summary::after {
+                transform: rotate(180deg);
+            }
+
+        .vi-re-owner-count-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .vi-re-owner-status {
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+            .vi-re-owner-status.ok {
+                color: #2e7d32;
+            }
+
+            .vi-re-owner-status.ng {
+                color: #c62828;
+            }
+
+        .vi-re-owner-count {
+            min-width: 32px;
+            text-align: center;
+            background: #34495e;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+
+        .vi-re-owner-table-wrapper {
+            margin-top: 12px;
+            overflow-x: auto;
+        }
+
+        .vi-re-owner-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+            .vi-re-owner-table th,
+            .vi-re-owner-table td {
+                border: 1px solid #dee2e6;
+                padding: 6px 8px;
+                text-align: left;
+                white-space: nowrap;
+            }
+
+            .vi-re-owner-table th {
+                background-color: #2c3e50;
+                color: #fff;
+            }
+
+            .vi-re-owner-table tr:nth-child(even) {
+                background-color: #f4f6f8;
+            }
+
+
+        /* === RESET === */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: radial-gradient(circle at 50% 0%, #f7faff 0%, #dfe9ff 60%);
+            color: #1e2a45;
+            font-family: "Segoe UI", "Roboto", Arial, sans-serif;
+            min-height: 100vh;
+        }
+
+        /* === LAYOUT === */
+        .dashboard-stage {
+            display: flex;
+            justify-content: center;
+            padding: 2rem 1rem 3rem;
+        }
+
+        .dashboard-wrapper {
+            width: 100%;
+            max-width: 1400px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            transition: transform 0.25s ease;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+
+        /* === CARD === */
+        .data-card {
+            background: #fff;
+            border: 1px solid rgba(0, 86, 216, 0.18);
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(15, 35, 95, 0.08);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+            .data-card:hover {
+                transform: translateY(-4px);
+                box-shadow: 0 12px 26px rgba(0, 86, 216, 0.15);
+            }
+
+        .panel-title {
+            font-weight: 600;
+            color: #003d99;
+            font-size: 1.1rem;
+        }
+
+        /* === CHARTS === */
+        .echart {
+            width: 100%;
+            height: 100%;
+        }
+
+        .chart-container-lg {
+            min-height: 320px;
+        }
+
+        .mini-chart-box {
+            background: #fff;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 86, 216, 0.1);
+            padding: 1rem;
+            flex: 1;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+            .mini-chart-box:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 8px 20px rgba(15, 35, 95, 0.12);
+            }
+
+        .mini-chart-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #0f2458;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+
+        .aging-split {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.25rem;
+        }
+
+        /* === RESPONSIVE === */
+        @@media (max-width: 1200px) {
+            .dashboard-wrapper {
+                transform: scale(0.9);
+            }
+        }
+
+        @@media (max-width: 992px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @@media (max-width: 768px) {
+            .dashboard-wrapper {
+                transform: scale(0.85);
+            }
+        }
+
+        @@media (max-width: 600px) {
+            .aging-split {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+}
