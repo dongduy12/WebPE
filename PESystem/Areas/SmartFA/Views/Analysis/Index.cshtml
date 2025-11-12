@@ -8,100 +8,105 @@
 @inject IHttpContextAccessor HttpContextAccessor
 
 <section>
-    <div class="row">
-        <!-- Ô nhập -->
-        <div class="col-md-6">
-            <form id="sn-form">
-                <div class="input-group d-flex align-items-start gap-2">
-                    <textarea id="serialNumberList" class="form-control flex-grow-1" rows="3" placeholder="Input SERIAL NUMBER..." required></textarea>
-                    <button type="submit" id="searchButton" class="btn btn-ne">SEARCH</button>
-                    <button type="button" id="refreshButton" class="btn btn-ne">REFRESH</button>
-                    <button type="button" id="updateReceivingButton" class="btn btn-ne">UPDATE LOCATION</button>
+    <div class="dashboard-stage">
+        <div class="dashboard-wrapper">
+            <div class="data-card">
+                <form id="sn-form">
+                    <div class="input-group d-flex align-items-start gap-2">
+                        <textarea id="serialNumberList" class="form-control" rows="3" placeholder="Input SERIAL NUMBER..." required></textarea>
+                        <button type="submit" id="searchButton" class="btn btn-ne">SEARCH</button>
+                        <button type="button" id="refreshButton" class="btn btn-ne">REFRESH</button>
+                        <button type="button" id="updateReceivingButton" class="btn btn-ne">UPDATE LOCATION</button>
+                        <button type="button" id="addGuideButton" class="btn btn-ne">ADD GUIDE</button>
+                    </div>
+                </form>
+
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <div class="btn-action-group btn-group mt-1">
+                        @{
+                            var allowedAreas = HttpContextAccessor.HttpContext.User.Claims
+                            .FirstOrDefault(c => c.Type == "AllowedAreas")?.Value.Split(',');
+
+                            var canShowFA = allowedAreas != null && allowedAreas.Any(area => area.Trim() == "FA");
+                            var canShowRetest = allowedAreas != null && allowedAreas.Any(area => area.Trim() == "RETEST");
+                            var canShowThayLieu = allowedAreas != null && allowedAreas.Any(area => area.Trim() == "THAY LIỆU");
+                            var canShowVI = allowedAreas != null && allowedAreas.Any(area => area.Trim() == "VI-RE");
+                            var canShowCheckList = allowedAreas != null && allowedAreas.Any(area => area.Trim() == "CHECK_LIST");
+                        }
+                        @if (canShowFA)
+                        {
+                            <button class="btn btn-outline-dark btn-fa">FA</button>
+                        }
+                        @if (canShowRetest)
+                        {
+                            <button class="btn btn-outline-dark btn-retest">RETEST</button>
+                        }
+                        @if (canShowThayLieu)
+                        {
+                            <button class="btn btn-outline-dark btn-thay-lieu">THAY LIỆU</button>
+                        }
+                        @if (canShowVI)
+                        {
+                            <button class="btn btn-outline-dark btn-vi">VI-RE</button>
+                        }
+                        @if (canShowCheckList)
+                        {
+                            <button class="btn btn-outline-dark btn-check-list">CHECK LIST</button>
+                        }
+                        <button id="btn-handover" class="btn btn-outline-danger">Giao</button>
+                        <button id="btn-receive" class="btn btn-outline-success">Nhận</button>
+                    </div>
                 </div>
-            </form>
-        </div>
-        <!-- Upload File -->
-        <div class="col-auto ms-auto text-end">
-            <button type="button" id="addGuideButton" class="btn btn-ne w-100">Add Guide</button>
-        </div>
-    </div>
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <div class="btn-action-group btn-group mt-1">
-            @{
-                var allowedAreas = HttpContextAccessor.HttpContext.User.Claims
-                .FirstOrDefault(c => c.Type == "AllowedAreas")?.Value.Split(',');
+                <div id="sn-table-wrapper" class="mt-2 datatable-wrapper d-none position-relative">
+                    <table id="sn-table" class="table table-bordered datatable-table">
+                        <img id="exportSnTableExcelBtn" src="~/assets/img/excel.png" alt="Excel Icon" style="width:48px; height:48px;" />
+                        <thead>
+                            <tr>
+                                <th>SERIAL_NUMBER</th>
+                                <th>PRODUCT_LINE</th>
+                                <th>MODEL_NAME</th>
+                                <th>WIP_GROUP</th>
+                                <th>TEST_GROUP</th>
+                                <th>TEST_CODE</th>
+                                <th>ERROR_DESC</th>
+                                <th>PRE_STATUS</th>
+                                <th>STATUS</th>
+                                <th>DATE</th>
+                                <th>ID_NV</th>
+                                <th>CHECK_POINT</th>
+                                <th>HANDOVER</th>
+                                <th>VỊ_TRÍ</th>
+                                <th>HƯỚNG_DẪN</th>
+                                <th>SỬA_CHỮA</th>
+                                <th>LỊCH_SỬ</th>
+                                <th>KHÁC</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-body">
+                            <!-- Các hàng sẽ được thêm ở đây -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-                var canShowFA = allowedAreas != null && allowedAreas.Any(area => area.Trim() == "FA");
-                var canShowRetest = allowedAreas != null && allowedAreas.Any(area => area.Trim() == "RETEST");
-                var canShowThayLieu = allowedAreas != null && allowedAreas.Any(area => area.Trim() == "THAY LIỆU");
-                var canShowVI = allowedAreas != null && allowedAreas.Any(area => area.Trim() == "VI-RE");
-                var canShowCheckList = allowedAreas != null && allowedAreas.Any(area => area.Trim() == "CHECK_LIST");
-            }
-            @if (canShowFA)
-            {
-                <button class="btn btn-outline-dark btn-fa">FA</button>
-            }
-            @if (canShowRetest)
-            {
-                <button class="btn btn-outline-dark btn-retest">RETEST</button>
-            }
-            @if (canShowThayLieu)
-            {
-                <button class="btn btn-outline-dark btn-thay-lieu">THAY LIỆU</button>
-            }
-            @if (canShowVI)
-            {
-                <button class="btn btn-outline-dark btn-vi">VI-RE</button>
-            }
-            @if (canShowCheckList)
-            {
-                <button class="btn btn-outline-dark btn-check-list">CHECK LIST</button>
-            }
-            <button id="btn-handover" class="btn btn-outline-danger">Giao</button>
-            <button id="btn-receive" class="btn btn-outline-success">Nhận</button>
-        </div>
-    </div>
-    <div id="sn-table-wrapper" class="mt-2 datatable-wrapper d-none position-relative">
-        <table id="sn-table" class="table table-bordered datatable-table">
-            <thead>
-                <tr>
-                    <th>SERIAL_NUMBER</th>
-                    <th>PRODUCT_LINE</th>
-                    <th>MODEL_NAME</th>
-                    <th>WIP</th>
-                    <th>TEST_GROUP</th>
-                    <th>TEST_CODE</th>
-                    <th>ERROR_DESC</th>
-                    <th>PRE_STATUS</th>
-                    <th>STATUS</th>
-                    <th>DATE</th>
-                    <th>ID_NV</th>
-                    <th>CHECK_POINT</th>
-                    <th>HANDOVER</th>
-                    <th>VỊ_TRÍ</th>
-                    <th>HƯỚNG_DẪN</th>
-                    <th>SỬA_CHỮA</th>
-                    <th>LỊCH_SỬ</th>
-                    <th>KHÁC</th>
-                </tr>
-            </thead>
-            <tbody id="results-body">
-                <!-- Các hàng sẽ được thêm ở đây -->
-            </tbody>
-        </table>
-        <img id="exportSnTableExcelBtn" src="~/assets/img/excel.png" alt="Excel Icon" style="top:-50px!important; width:48px; height:48px; position:absolute; top:0; right:0; cursor:pointer;" />
-    </div>
+            <div class="data-card chart-container-lg">
+                <img id="exportAllLocationExcelBtn" src="~/assets/img/excel.png" alt="Excel Icon" style="width:48px; height:48px;" />
+                <div id="locationChart" style="max-height: 400px;"></div>
+            </div>
 
-    <div class="chart-container position-relative" style="width: 100%; margin: auto; padding: 5px;">
-        <div id="locationChart" style="max-height: 400px;"></div>
-        <img id="exportAllLocationExcelBtn" src="~/assets/img/excel.png" alt="Excel Icon" style="width:48px; height:48px; position:absolute; top:0; left:0; cursor:pointer;" />
-    </div>
-    <div class="row chart-container" style="width: 100%; margin: auto; padding: 5px;">
-        <div class="col-md-6">
-            <div id="onlineStatusChart" style="max-height: 400px;"></div>
-        </div>
-        <div class="col-md-6">
-            <div id="agingChart" style="max-height: 400px;"></div>
+
+            <div class="dashboard-grid">
+                <div class="data-card">
+                    <div class="panel-title">Trạng Thái Sản Phẩm</div>
+                    <div class="chart-container-lg">
+                        <div id="onlineStatusChart" class="echart"></div>
+                    </div>
+                </div>
+
+                <div class="data-card">
+                    <div id="agingChart" class="echart"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -540,6 +545,7 @@
             </div>
         </div>
     </div>
+
     <a href="#" class="back-to-top d-flex align-items-center justify-content-center"><i class="fa fa-arrow-up"></i></a>
 </section>
 
@@ -556,10 +562,6 @@
             overflow-x: auto;
             overflow-y: auto;
             max-height: 80vh;
-        }
-
-        body {
-            background-color: #f8f9fa;
         }
 
         .badge-status {
@@ -623,5 +625,127 @@
                 opacity: 1;
             }
 
+        /* === RESET === */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: radial-gradient(circle at 50% 0%, #f7faff 0%, #dfe9ff 60%);
+            color: #1e2a45;
+            font-family: "Segoe UI", "Roboto", Arial, sans-serif;
+            min-height: 100vh;
+        }
+
+        /* === LAYOUT === */
+        .dashboard-stage {
+            display: flex;
+            justify-content: center;
+            padding: 2rem 1rem 3rem;
+        }
+
+        .dashboard-wrapper {
+            width: 100%;
+            max-width: 1400px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            transition: transform 0.25s ease;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+
+        /* === CARD === */
+        .data-card {
+            background: #fff;
+            border: 1px solid rgba(0, 86, 216, 0.18);
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(15, 35, 95, 0.08);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+            .data-card:hover {
+                transform: translateY(-4px);
+                box-shadow: 0 12px 26px rgba(0, 86, 216, 0.15);
+            }
+
+        .panel-title {
+            font-weight: 600;
+            color: #003d99;
+            font-size: 1.1rem;
+        }
+
+        /* === CHARTS === */
+        .echart {
+            width: 100%;
+            height: 100%;
+        }
+
+        .chart-container-lg {
+            min-height: 320px;
+        }
+
+        .mini-chart-box {
+            background: #fff;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 86, 216, 0.1);
+            padding: 1rem;
+            flex: 1;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+            .mini-chart-box:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 8px 20px rgba(15, 35, 95, 0.12);
+            }
+
+        .mini-chart-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #0f2458;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+
+        .aging-split {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.25rem;
+        }
+
+        /* === RESPONSIVE === */
+        @@media (max-width: 1200px) {
+            .dashboard-wrapper {
+                transform: scale(0.9);
+            }
+        }
+
+        @@media (max-width: 992px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @@media (max-width: 768px) {
+            .dashboard-wrapper {
+                transform: scale(0.85);
+            }
+        }
+
+        @@media (max-width: 600px) {
+            .aging-split {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 }

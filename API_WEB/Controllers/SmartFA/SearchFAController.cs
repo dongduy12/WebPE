@@ -451,9 +451,9 @@ namespace API_WEB.Controllers.SmartFA
                         DATA12 = detail.DATA12 ?? "",
                         DATE3 = detail.DATE3,
                         TESTER = detail.TESTER ?? "",
-                        DATA17 = detail.DATA17 ?? "",//type
+                        DATA17 = detail.DATA17 ?? "",//Type
                         DATA18 = detail.DATA18 ?? "",//Location
-                        DATA19 = detail.DATA19 ?? "",//L?ch s? s?a ch?a.
+                        DATA19 = detail.DATA19 ?? "",//Lich su sua chua.
                     })
                     .ToListAsync();
 
@@ -908,7 +908,7 @@ namespace API_WEB.Controllers.SmartFA
 
                 var filteredData = await _oracleContext.OracleDataRepairTaskDetail
                     .Where(detail => detail.DATA12 != null
-                        && detail.DATA12.Trim().ToUpper() == "CHECK_LIST"
+                        && detail.DATA11.Trim().ToUpper() == "CHECK_LIST"
                         && (detail.DATA19 == null || detail.DATA19 != "CONFIRM_PUT_B36R")
                         && detail.DATA17 != null
                         && detail.DATA17.Trim().ToUpper() == "CONFIRM"
@@ -959,32 +959,8 @@ namespace API_WEB.Controllers.SmartFA
                     });
                 }
 
-                var normalizedSerialNumbers = serialNumbers
-                    .Select(sn => sn.ToUpperInvariant())
-                    .ToList();
-
-                var scrapSerials = await _sqlContext.ScrapLists.AsNoTracking()
-                    .Where(scrap => normalizedSerialNumbers.Contains(scrap.SN.ToUpper()))
-                    .Select(scrap => scrap.SN)
-                    .ToListAsync();
-
-                var scrapSet = new HashSet<string>(scrapSerials.Select(sn => sn?.Trim() ?? string.Empty), StringComparer.OrdinalIgnoreCase);
-
-                var validData = filteredData
-                    .Where(item => !string.IsNullOrWhiteSpace(item.SerialNumber) && scrapSet.Contains(item.SerialNumber.Trim()))
-                    .ToList();
-
-                if (!validData.Any())
-                {
-                    return Ok(new
-                    {
-                        success = true,
-                        totalCount = 0,
-                        totalOk = 0,
-                        totalNg = 0,
-                        data = new List<CheckListConfirmOwnerDto>()
-                    });
-                }
+                // Giữ nguyên toàn bộ filteredData là validData
+                var validData = filteredData;
 
                 var grouped = validData
                     .GroupBy(item => string.IsNullOrWhiteSpace(item.Tester) ? "UNKNOWN" : item.Tester!.Trim())
@@ -1027,6 +1003,7 @@ namespace API_WEB.Controllers.SmartFA
                 });
             }
         }
+
 
         private static readonly string OkStatusNormalized = RemoveDiacritics("CHỜ TRẢ").ToUpperInvariant();
 
