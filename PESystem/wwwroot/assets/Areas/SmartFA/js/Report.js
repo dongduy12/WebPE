@@ -607,12 +607,18 @@ async function loadData(startDate, endDate) {
 
         const ownerFullNames = await fetchOwnerFullNamesBatch([...allOwners]);
 
+        const checkListData = checkListConfirm?.success ? (checkListConfirm.data || []) : null;
+
         if (repair?.success) {
             renderTable("xoaR", repair.data, TABLE_CONFIG.xoaR, ownerFullNames);
-            renderOwnerChart("repairChart", repair.data, "Sản lượng xóa R theo Owner", ownerFullNames);
+            renderOwnerChart("repairChart", repair.data, "Sản lượng xóa R theo Owner", ownerFullNames, {
+                primaryLabel: "Sản lượng xóa R",
+                secondaryLabel: "Sản lượng CHECK_LIST",
+                secondaryData: checkListData,
+                secondaryCountField: "count"
+            });
             renderHourlyChart("repairHourlyChart", repair.data);
         }
-        const checkListData = checkListConfirm?.success ? (checkListConfirm.data || []) : null;
         if (confirm?.success) {
             renderTable("XacNhanPhanTich", confirm.data, TABLE_CONFIG.XacNhanPhanTich, ownerFullNames);
             renderOwnerChart("confirmChart", confirm.data, "Sản lượng xác nhận bản lỗi theo Owner", ownerFullNames, {
