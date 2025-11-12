@@ -187,49 +187,121 @@ function renderTable(containerId, data, config, ownerFullNames) {
 }
 
 // ================== OWNER CHART (ECharts) ==================
-function renderOwnerChart(containerId, data, title, ownerFullNames) {
+function aggregateOwnerCounts(records, ownerFullNames, countField) {
+    const counts = {};
+    (records || []).forEach(item => {
+        if (!item) return;
+        const ownerCode = (item.owner || "").trim();
+        if (!ownerCode || !ownerFullNames[ownerCode]) return;
+
+        let increment = 1;
+        if (countField && typeof item[countField] === "number" && !Number.isNaN(item[countField])) {
+            increment = item[countField];
+        }
+
+        counts[ownerCode] = (counts[ownerCode] || 0) + increment;
+    });
+    return counts;
+}
+
+function buildOwnerLabel(ownerCode, ownerFullNames) {
+    const display = ownerFullNames[ownerCode];
+    if (!display) return "";
+    return display !== ownerCode ? `${display} (${ownerCode})` : display;
+}
+
+function renderOwnerChart(containerId, data, title, ownerFullNames, options = {}) {
+    const {
+        primaryLabel = "Sản lượng",
+        primaryCountField = null,
+        secondaryData = null,
+        secondaryLabel = "Sản lượng CHECK_LIST",
+        secondaryCountField = "count"
+    } = options;
+
     const el = document.getElementById(containerId);
     if (!el) return;
 
-    const valid = (data || []).filter(i => i?.owner && ownerFullNames[i.owner]);
-    if (!valid.length) {
+    const primaryCounts = aggregateOwnerCounts(data, ownerFullNames, primaryCountField);
+    const hasSecondary = Array.isArray(secondaryData);
+    const secondaryCounts = hasSecondary
+        ? aggregateOwnerCounts(secondaryData, ownerFullNames, secondaryCountField)
+        : {};
+
+    const ownerCodes = new Set([
+        ...Object.keys(primaryCounts),
+        ...(hasSecondary ? Object.keys(secondaryCounts) : [])
+    ]);
+
+    const combined = [...ownerCodes]
+        .map(code => ({
+            code,
+            label: buildOwnerLabel(code, ownerFullNames),
+            primary: primaryCounts[code] || 0,
+            secondary: hasSecondary ? (secondaryCounts[code] || 0) : 0
+        }))
+        .filter(item => item.label && (item.primary > 0 || item.secondary > 0));
+
+    if (!combined.length) {
         el.innerHTML = "<div class='text-muted'>Không có dữ liệu.</div>";
         return;
     }
 
-    const counts = {};
-    valid.forEach(i => {
-        const name = ownerFullNames[i.owner];
-        counts[name] = (counts[name] || 0) + 1;
-    });
+    combined.sort((a, b) => (b.primary + b.secondary) - (a.primary + a.secondary));
 
-    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    const categories = sorted.map(i => i[0]);
-    const values = sorted.map(i => i[1]);
+    const categories = combined.map(item => item.label);
+    const primaryValues = combined.map(item => item.primary);
+    const secondaryValues = combined.map(item => item.secondary);
 
-    const chart = echarts.init(el);
-    chart.setOption({
-        tooltip: { trigger: "axis" },
-        grid: { top: 30, left: 50, right: 30, bottom: 60 },
-        xAxis: {
-            type: "category",
-            data: categories,
-            axisLabel: { rotate: 35, color: "#333", fontSize: 10 }
+    const series = [{
+        name: primaryLabel,
+        data: primaryValues,
+        type: "bar",
+        barWidth: hasSecondary ? 18 : 30,
+        itemStyle: {
+            borderRadius: [0, 0, 0, 0],
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: "#42a5f5" },
+                { offset: 1, color: "#1e88e5" }
+            ])
         },
-        yAxis: { type: "value", name: "Số lượng" },
-        series: [{
-            data: values,
+        label: { show: true, position: "top", color: "#2c3e50", fontWeight: "bold" }
+    }];
+
+    if (hasSecondary) {
+        series.push({
+            name: secondaryLabel,
+            data: secondaryValues,
             type: "bar",
-            barWidth: 30,
+            barWidth: 18,
             itemStyle: {
                 borderRadius: [0, 0, 0, 0],
                 color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                    { offset: 0, color: "#42a5f5" },
-                    { offset: 1, color: "#1e88e5" }
+                    { offset: 0, color: "#FFD54F" },
+                    { offset: 1, color: "#FFA000" }
                 ])
             },
-            label: { show: true, position: "top", color: "#2c3e50", fontWeight: "bold" }
-        }]
+            label: { show: true, position: "top", color: "#8C6D1F", fontWeight: "bold" }
+        });
+    }
+
+    const chart = echarts.init(el);
+    chart.setOption({
+        tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+        legend: hasSecondary ? { data: [primaryLabel, secondaryLabel], top: 0 } : undefined,
+        grid: { top: hasSecondary ? 60 : 30, left: 50, right: 30, bottom: 80 },
+        xAxis: {
+            type: "category",
+            data: categories,
+            axisLabel: {
+                rotate: 25,
+                color: "#333",
+                fontSize: 10,
+                formatter: value => value.length > 18 ? `${value.slice(0, 18)}…` : value
+            }
+        },
+        yAxis: { type: "value", name: "Số lượng" },
+        series
     });
     window.addEventListener("resize", () => chart.resize());
 }
@@ -540,9 +612,15 @@ async function loadData(startDate, endDate) {
             renderOwnerChart("repairChart", repair.data, "Sản lượng xóa R theo Owner", ownerFullNames);
             renderHourlyChart("repairHourlyChart", repair.data);
         }
+        const checkListData = checkListConfirm?.success ? (checkListConfirm.data || []) : null;
         if (confirm?.success) {
             renderTable("XacNhanPhanTich", confirm.data, TABLE_CONFIG.XacNhanPhanTich, ownerFullNames);
-            renderOwnerChart("confirmChart", confirm.data, "Sản lượng xác nhận bản lỗi theo Owner", ownerFullNames);
+            renderOwnerChart("confirmChart", confirm.data, "Sản lượng xác nhận bản lỗi theo Owner", ownerFullNames, {
+                primaryLabel: "Sản lượng",
+                secondaryLabel: "Sản lượng CHECK_LIST",
+                secondaryData: checkListData,
+                secondaryCountField: "count"
+            });
         }
 
         renderViReConfirmCard("viReConfirmCard", viReConfirm, ownerFullNames, {
