@@ -622,10 +622,7 @@ async function loadData(startDate, endDate) {
         if (confirm?.success) {
             renderTable("XacNhanPhanTich", confirm.data, TABLE_CONFIG.XacNhanPhanTich, ownerFullNames);
             renderOwnerChart("confirmChart", confirm.data, "Sản lượng xác nhận bản lỗi theo Owner", ownerFullNames, {
-                primaryLabel: "Sản lượng",
-                secondaryLabel: "Sản lượng CHECK_LIST",
-                secondaryData: checkListData,
-                secondaryCountField: "count"
+                primaryLabel: "Sản lượng"
             });
         }
 
