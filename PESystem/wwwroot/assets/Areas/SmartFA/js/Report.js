@@ -629,16 +629,10 @@ async function loadData(startDate, endDate) {
         renderViReConfirmCard("viReConfirmCard", viReConfirm, ownerFullNames, {
             title: "Sản lượng VI-RE Confirm"
         });
-        renderViReConfirmCard("checkListConfirmCard", checkListConfirm, ownerFullNames, {
-            title: "Sản lượng CHECK_LIST"
-        });
     } catch (e) {
         console.error("Lỗi xử lý:", e);
         renderViReConfirmCard("viReConfirmCard", { success: false }, {}, {
             title: "Sản lượng VI-RE Confirm"
-        });
-        renderViReConfirmCard("checkListConfirmCard", { success: false }, {}, {
-            title: "Sản lượng CHECK_LIST"
         });
     }
 }

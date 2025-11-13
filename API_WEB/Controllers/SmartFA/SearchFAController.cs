@@ -26,219 +26,173 @@ namespace API_WEB.Controllers.SmartFA
         private const string V = "SearchProductsBySNInternal trả về success = false: {Message}";
         private readonly CSDL_NE _sqlContext;
         private readonly OracleDbContext _oracleContext;
-        private readonly HttpClient _httpClient; // Thêm HttpClient để gọi API
-        public SearchFAController(CSDL_NE sqlContext, OracleDbContext oracleContext, HttpClient httpClient)
+        public SearchFAController(CSDL_NE sqlContext, OracleDbContext oracleContext)
         {
             _sqlContext = sqlContext ?? throw new ArgumentNullException(nameof(sqlContext));
             _oracleContext = oracleContext ?? throw new ArgumentNullException(nameof(oracleContext));
         }
 
         [HttpPost("search")]
-        public async Task<IActionResult> SearchRepairTasks([FromBody] SearchRequestNe request)
+        public async Task<IActionResult> SearchRepairTask([FromBody] SearchRequestNe request)
         {
+            await using var connection = new OracleConnection(_oracleContext.Database.GetDbConnection().ConnectionString);
+
             try
             {
-                // 1. Truy vấn OracleDataRepairTask và chỉ lấy SERIAL_NUMBER với MODEL_SERIAL != "SWITCH"
-                var oracleTasks = await (
-                    from task in _oracleContext.OracleDataRepairTask
-                    join modelDesc in _oracleContext.OracleDataCModelDesc
-                    on task.MODEL_NAME equals modelDesc.MODEL_NAME
-                    join wipGroup in _oracleContext.OracleDataR107 // Join với bảng r107
-                    on task.SERIAL_NUMBER equals wipGroup.SERIAL_NUMBER
-                    join kanBanWIP in _oracleContext.OracleDataZKanbanTracking
-                    on task.SERIAL_NUMBER equals kanBanWIP.SERIAL_NUMBER into kanBanJoin
-                    from kanBanWIP in kanBanJoin.DefaultIfEmpty() // Left join để xử lý trường hợp SN không có trong z_kanban_tracking
-                    where modelDesc.MODEL_SERIAL != "SWITCH" // Điều kiện lọc MODEL_SERIAL
-                          && !(wipGroup.WIP_GROUP.Contains("BR2C") || wipGroup.WIP_GROUP.Contains("BCFA"))
-                          && (string.IsNullOrEmpty(request.Data1) || EF.Functions.Like(task.DATA1, $"%{request.Data1}%"))
-                          && (request.SerialNumbers == null || !request.SerialNumbers.Any() || request.SerialNumbers.Contains(task.SERIAL_NUMBER))
-                          && (string.IsNullOrEmpty(request.ModelName) || task.MODEL_NAME == request.ModelName)
-                          && (string.IsNullOrEmpty(request.TestCode) || task.TEST_CODE == request.TestCode)
-                          && (string.IsNullOrEmpty(request.Status) || task.DATA11 == request.Status)
-                          && (string.IsNullOrEmpty(request.HandoverStatus) || task.DATA13 == request.HandoverStatus)
-                    select new
-                    {
-                        task.SERIAL_NUMBER,
-                        task.MODEL_NAME,
-                        task.MO_NUMBER,
-                        task.TEST_GROUP,
-                        task.TEST_CODE,
-                        task.DATA1,
-                        task.DATA11,
-                        task.DATA12,
-                        task.DATE3,
-                        task.TESTER,
-                        task.DATA13,
-                        task.DATA17,
-                        task.DATA18,
-                        WIP_GROUP = wipGroup.WIP_GROUP, // Từ r107
-                        KANBAN_WIP = kanBanWIP != null ? kanBanWIP.WIP_GROUP : null // Từ z_kanban_tracking, null nếu không tìm thấy
-                    }
-                ).ToListAsync();
+                await connection.OpenAsync();
+                var searchQuery = @"
+                 SELECT 
+                    task.SERIAL_NUMBER,
+                    task.MODEL_NAME,
+                    task.MO_NUMBER,
+                    task.TEST_GROUP,
+                    task.TEST_CODE AS ERROR_CODE,
+                    task.DATA1 AS ERROR_DESC,
+                    task.DATA11 AS STATUS,
+                    task.DATA12 AS PR_STATUS,
+                    task.DATE3,
+                    task.TESTER,
+                    task.DATA13 as HANDOVER,
+                    task.DATA17 as ACTION,
+                    task.DATA18 as POSITION,
+                    cmd.PRODUCT_LINE,
+                    r107.WIP_GROUP,
+                    CASE WHEN zkt.WIP_GROUP IS NOT NULL THEN zkt.WIP_GROUP
+                        ELSE 'Before'
+                    END AS KANBAN_WIP
+                FROM SFISM4.R_REPAIR_TASK_T task
+                JOIN SFIS1.C_MODEL_DESC_T md ON task.MODEL_NAME = md.MODEL_NAME
+                JOIN SFISM4.R107 r107 ON task.SERIAL_NUMBER = r107.SERIAL_NUMBER
+                LEFT JOIN SFISM4.Z_KANBAN_TRACKING_T zkt 
+                    ON task.SERIAL_NUMBER = zkt.SERIAL_NUMBER
+                LEFT JOIN SFIS1.C_MODEL_DESC_T cmd 
+                    ON task.MODEL_NAME = cmd.MODEL_NAME
+                WHERE md.MODEL_SERIAL <> 'SWITCH'
+                AND r107.WIP_GROUP NOT LIKE '%BR2C%'";
+                var parameters = new List<OracleParameter>();
 
-                if (!oracleTasks.Any())
+                if (!string.IsNullOrEmpty(request.Data1))
                 {
-                    return Ok(new
-                    {
-                        success = false,
-                        message = "Không tìm thấy dữ liệu phù hợp.",
-                        data = new List<object>()
-                    });
+                    searchQuery += " AND task.DATA1 LIKE :p_data1 ";
+                    parameters.Add(new OracleParameter("p_data1", $"%{request.Data1}%"));
                 }
 
-                // 2. Xác định giá trị KANBAN_WIP dựa trên MODEL_NAME và z_kanban_tracking
-                var tasksWithKanbanWip = oracleTasks.Select(task => new
+                if (!string.IsNullOrEmpty(request.ModelName))
                 {
-                    task.SERIAL_NUMBER,
-                    task.MODEL_NAME,
-                    task.MO_NUMBER,
-                    task.TEST_GROUP,
-                    task.TEST_CODE,
-                    task.DATA1,
-                    task.DATA11,
-                    task.DATA12,
-                    task.DATE3,
-                    task.TESTER,
-                    task.DATA13,
-                    task.DATA17,
-                    task.DATA18,
-                    task.WIP_GROUP,
-                    KANBAN_WIP = task.MODEL_NAME.StartsWith("900") ? "After" :
-                                 (task.KANBAN_WIP != null ? task.KANBAN_WIP : "Before")
-                }).ToList();
+                    searchQuery += " AND task.MODEL_NAME = :p_model ";
+                    parameters.Add(new OracleParameter("p_model", request.ModelName));
+                }
 
-                // 3. Lấy danh sách ModelName từ tasksWithKanbanWip
-                var modelNames = tasksWithKanbanWip.Select(t => t.MODEL_NAME).Distinct().ToList();
-
-                // 4. Truy vấn ProductLine từ SFIS1.C_MODEL_DESC_T
-                string productLineQuery = $@"
-            SELECT MODEL_NAME, PRODUCT_LINE
-            FROM SFIS1.C_MODEL_DESC_T
-            WHERE MODEL_NAME IN ({string.Join(",", modelNames.Select(mn => $"'{mn}'"))})";
-
-                var productLineResults = await _oracleContext.OracleDataCModelDesc
-                    .FromSqlRaw(productLineQuery)
-                    .AsNoTracking()
-                    .Select(pl => new
-                    {
-                        MODEL_NAME = pl.MODEL_NAME,
-                        PRODUCT_LINE = pl.PRODUCT_LINE ?? ""
-                    })
-                    .ToListAsync();
-
-                // 5. Kết hợp ProductLine với tasksWithKanbanWip
-                var oracleWithProductLine = tasksWithKanbanWip.Select(task => new
+                if (!string.IsNullOrEmpty(request.TestCode))
                 {
-                    task.SERIAL_NUMBER,
-                    task.MODEL_NAME,
-                    task.MO_NUMBER,
-                    task.TEST_GROUP,
-                    task.TEST_CODE,
-                    task.DATA1,
-                    task.DATA11,
-                    task.DATA12,
-                    task.DATE3,
-                    task.TESTER,
-                    task.DATA13,
-                    task.DATA17,
-                    task.DATA18,
-                    task.WIP_GROUP,
-                    task.KANBAN_WIP,
-                    ProductLine = productLineResults.FirstOrDefault(pl => pl.MODEL_NAME == task.MODEL_NAME)?.PRODUCT_LINE ?? "N/A"
-                });
+                    searchQuery += " AND task.TEST_CODE = :p_testcode ";
+                    parameters.Add(new OracleParameter("p_testcode", request.TestCode));
+                }
 
-                // 6. Truy vấn dữ liệu từ bảng Product và ScrapList (SQL Server)
-                var serialNumbers = oracleWithProductLine.Select(t => t.SERIAL_NUMBER).ToList();
-                var products = await _sqlContext.Products
-                    .AsNoTracking()
-                    .Include(p => p.Shelf)
-                    .Where(product => serialNumbers.Contains(product.SerialNumber))
-                    .Select(product => new
+                if (!string.IsNullOrEmpty(request.Status))
+                {
+                    searchQuery += " AND task.DATA11 = :p_status ";
+                    parameters.Add(new OracleParameter("p_status", request.Status));
+                }
+
+                if (!string.IsNullOrEmpty(request.HandoverStatus))
+                {
+                    searchQuery += " AND task.DATA13 = :p_handover ";
+                    parameters.Add(new OracleParameter("p_handover", request.HandoverStatus));
+                }
+
+                // Filter SN list bằng array binding
+                if (request.SerialNumbers != null && request.SerialNumbers.Any())
+                {
+                    searchQuery += @"
+                        AND task.SERIAL_NUMBER IN (
+                            SELECT COLUMN_VALUE 
+                            FROM TABLE(:sn_list)
+                        )";
+
+                    var arrayParam = new OracleParameter
                     {
-                        product.SerialNumber,
-                        ShelfCode = product.Shelf != null ? product.Shelf.ShelfCode : null,
-                        product.ColumnNumber,
-                        product.LevelNumber,
-                        product.TrayNumber,
-                        product.PositionInTray,
-                        product.BorrowStatus
-                    })
-                    .ToListAsync();
+                        ParameterName = "sn_list",
+                        OracleDbType = OracleDbType.Varchar2,
+                        CollectionType = OracleCollectionType.PLSQLAssociativeArray,
+                        Value = request.SerialNumbers.ToArray(),
+                        Size = request.SerialNumbers.Count()
+                    };
 
-                //New query ScrapList
-                var scrapList = await _sqlContext.ScrapLists.AsNoTracking().Where(scrap => serialNumbers.Contains(scrap.SN))
-                    .Select(scrap => new
+                    parameters.Add(arrayParam);
+                }
+
+
+                var cmd = new OracleCommand(searchQuery, connection);
+                cmd.BindByName = true;
+                foreach (var p in parameters)
+                {
+                    cmd.Parameters.Add(p);
+                }
+                var results = new List<OracleRepairResult>();
+                await using var reder = await cmd.ExecuteReaderAsync();
+                while(await reder.ReadAsync())
+                {
+                    results.Add(new OracleRepairResult
                     {
-                        scrap.SN,
-                        ScrapStatus = scrap.ApplyTaskStatus == 0 || scrap.ApplyTaskStatus == 1 ? "SPE Approved Scrap" :
-                             scrap.ApplyTaskStatus == 2 ? "Waiting Approve" :
-                             scrap.ApplyTaskStatus == 3 ? "SPE approve to BGA" : ""
-                    }).ToListAsync();
-
-                // 7. Kết hợp dữ liệu Oracle và SQL Server
-                var combinedResults = oracleWithProductLine
-                    .GroupJoin(
-                        products,
-                        oracle => oracle.SERIAL_NUMBER,
-                        product => product.SerialNumber,
-                        (oracle, productGroup) => new
-                        {
-                            OracleTask = oracle,
-                            ProductData = productGroup.FirstOrDefault()
-                        }
-                    ).GroupJoin(
-                    scrapList,
-                        combined => combined.OracleTask.SERIAL_NUMBER,
-                        scrap => scrap.SN,
-                        (combined, scrapGroup) => new
-                        {
-                            combined.OracleTask,
-                            combined.ProductData,
-                            ScrapData = scrapGroup.FirstOrDefault()
-                        }
-                     )
-                    .Select(result => new
-                    {
-                        result.OracleTask.SERIAL_NUMBER,
-                        result.OracleTask.MODEL_NAME,
-                        result.OracleTask.MO_NUMBER,
-                        result.OracleTask.TEST_GROUP,
-                        result.OracleTask.TEST_CODE,
-                        result.OracleTask.DATA1,
-                        result.OracleTask.DATA11,
-                        result.OracleTask.DATA12,
-                        result.OracleTask.DATE3,
-                        result.OracleTask.TESTER,
-                        result.OracleTask.DATA13,
-                        result.OracleTask.DATA17,
-                        result.OracleTask.DATA18,
-                        result.OracleTask.WIP_GROUP,
-                        result.OracleTask.KANBAN_WIP,
-                        result.OracleTask.ProductLine,
-                        ShelfCode = result.ProductData?.ShelfCode ?? "",
-                        ColumnNumber = result.ProductData?.ColumnNumber,
-                        LevelNumber = result.ProductData?.LevelNumber,
-                        TrayNumber = result.ProductData?.TrayNumber,
-                        PositionInTray = result.ProductData?.PositionInTray,
-                        BorrowStatus = result.ProductData?.BorrowStatus,
-                        ScrapStatus = result.ScrapData?.ScrapStatus ?? ""
-                    })
-                    .ToList();
-
+                        SERIAL_NUMBER = reder["SERIAL_NUMBER"]?.ToString(),
+                        MODEL_NAME = reder["MODEL_NAME"]?.ToString(),
+                        MO_NUMBER = reder["MO_NUMBER"]?.ToString(),
+                        TEST_GROUP = reder["TEST_GROUP"]?.ToString(),
+                        ERROR_CODE = reder["ERROR_CODE"]?.ToString(),
+                        ERROR_DESC = reder["ERROR_DESC"]?.ToString(),
+                        STATUS = reder["STATUS"]?.ToString(),
+                        PR_STATUS = reder["PR_STATUS"]?.ToString(),
+                        DATE3 = reder["DATE3"] as DateTime?,
+                        TESTER = reder["TESTER"]?.ToString(),
+                        HANDOVER = reder["HANDOVER"]?.ToString(),
+                        ACTION = reder["ACTION"]?.ToString(),
+                        POSITION = reder["POSITION"]?.ToString(),
+                        PRODUCT_LINE = reder["PRODUCT_LINE"]?.ToString(),
+                        WIP_GROUP = reder["WIP_GROUP"]?.ToString(),
+                        KANBAN_WIP = reder["KANBAN_WIP"]?.ToString()
+                    });
+                }
                 return Ok(new
                 {
                     success = true,
-                    totalResults = combinedResults.Count,
-                    data = combinedResults
+                    count = results.Count,
+                    data = results
                 });
+            }
+            catch (OracleException ex)
+            {
+                return StatusCode(500, new { success = false, message = $"Database error: {ex.Message}" });
             }
             catch (Exception ex)
             {
-                // Ghi log chi tiết lỗi
-                Console.WriteLine($"Lỗi: {ex.Message}");
-                Console.WriteLine($"Chi tiết: {ex.StackTrace}");
-                return StatusCode(500, new { success = false, message = ex.Message });
+                return StatusCode(500, new { success = false, message = $"System error: {ex.Message}" });
             }
+            finally
+            {
+                if (connection.State == ConnectionState.Open)
+                    await connection.CloseAsync();
+            }
+        }
+
+        public class OracleRepairResult
+        {
+            public string SERIAL_NUMBER { get; set; }
+            public string MODEL_NAME { get; set; }
+            public string MO_NUMBER { get; set; }
+            public string TEST_GROUP { get; set; }
+            public string ERROR_CODE { get; set; }
+            public string ERROR_DESC { get; set; }
+            public string STATUS { get; set; }
+            public string PR_STATUS { get; set; }
+            public DateTime? DATE3 { get; set; }
+            public string TESTER { get; set; }
+            public string HANDOVER { get; set; }
+            public string ACTION { get; set; }
+            public string POSITION { get; set; }
+            public string WIP_GROUP { get; set; }
+            public string KANBAN_WIP { get; set; }
+            public string PRODUCT_LINE { get; set; }
         }
 
         [HttpGet("get-fullname")]
